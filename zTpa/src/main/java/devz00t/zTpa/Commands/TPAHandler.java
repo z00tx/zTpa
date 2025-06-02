@@ -36,7 +36,7 @@ public class TPAHandler {
         requests.put(target.getUniqueId(), sender.getUniqueId());
         requestTypes.put(target.getUniqueId(), isTpa);
 
-        showAcceptGUI(target, sender); // Added sender parameter here
+        showAcceptGUI(target, sender);
 
         String requestType = isTpa ? "TPA" : "TPAHERE";
         sender.sendMessage(ChatColor.GREEN + requestType + " request sent to " + target.getName() + "!");
@@ -52,7 +52,6 @@ public class TPAHandler {
     public static void showAcceptGUI(Player target, Player sender) {
         Inventory gui = Bukkit.createInventory(null, 27, "§aTeleport Request");
 
-        // Create sender's head
         ItemStack head = new ItemStack(Material.PLAYER_HEAD);
         SkullMeta meta = (SkullMeta) head.getItemMeta();
         meta.setOwningPlayer(sender);
@@ -62,7 +61,6 @@ public class TPAHandler {
         ItemStack accept = createGuiItem(Material.LIME_STAINED_GLASS_PANE, ChatColor.GREEN + "Accept");
         ItemStack deny = createGuiItem(Material.RED_STAINED_GLASS_PANE, ChatColor.RED + "Deny");
 
-        // Fill GUI
         gui.setItem(13, head);
         gui.setItem(11, accept);
         gui.setItem(15, deny);

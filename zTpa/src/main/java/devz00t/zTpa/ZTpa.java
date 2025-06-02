@@ -12,12 +12,10 @@ public final class ZTpa extends JavaPlugin {
     public void onEnable() {
         instance = this;
 
-        // Commands registrieren
         getCommand("tpa").setExecutor(new TPACommand());
         getCommand("tpaccept").setExecutor(new TPAAcceptCommand());
         getCommand("tpahere").setExecutor(new TPAHereCommand());
 
-        // Listener registrieren
         getServer().getPluginManager().registerEvents(new TPAListener(), this);
     }
 

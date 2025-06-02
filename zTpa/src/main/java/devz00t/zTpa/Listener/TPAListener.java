@@ -45,7 +45,7 @@ public class TPAListener implements Listener {
 
         Player player = e.getPlayer();
         if (TPAHandler.isTeleporting(player)) {
-            TPAHandler.cancelTeleport(player, ChatColor.RED + "Teleport abgebrochen wegen Bewegung.");
+            TPAHandler.cancelTeleport(player, ChatColor.RED + "Teleport cancelled due to movement");
         }
     }
 

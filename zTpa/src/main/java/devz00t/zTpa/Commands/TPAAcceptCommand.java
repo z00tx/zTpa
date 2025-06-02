@@ -13,7 +13,6 @@ public class TPAAcceptCommand implements CommandExecutor {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) return false;
 
-        // Get the sender of the TPA request
         UUID senderId = TPAHandler.getRequestSender(player.getUniqueId());
         if (senderId == null) {
             player.sendMessage(ChatColor.RED + "You have no pending teleport requests!");
