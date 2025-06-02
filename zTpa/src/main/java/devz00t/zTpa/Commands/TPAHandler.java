@@ -8,244 +8,232 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.scheduler.BukkitRunnable;
+import devz00t.zTpa.ZTpa;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class TPAHandler {
+    private static final Map<UUID, UUID> requests = new ConcurrentHashMap<>();
+    private static final Map<UUID, Boolean> requestTypes = new ConcurrentHashMap<>();
+    private static final Set<UUID> teleporting = Collections.synchronizedSet(new HashSet<>());
+    private static final Map<UUID, Long> cooldowns = new ConcurrentHashMap<>();
+    private static final long COOLDOWN_TIME = 10_000; // 10 seconds
 
-    private static final Map<Player, Player> requests = new HashMap<>();
-    private static final Map<UUID, UUID> sentRequests = new HashMap<>();
-    private static final Map<Player, Boolean> requestTypes = new HashMap<>();
-    private static final Set<Player> teleporting = new HashSet<>();
-    private static final Map<UUID, Long> cooldowns = new HashMap<>();
-    private static final Map<Player, BukkitRunnable> expiryTasks = new HashMap<>();
-
-    private static final long TELEPORT_COOLDOWN = 10_000;
-
-    public static boolean hasPendingRequest(Player sender, Player target) {
-        return sentRequests.containsKey(sender.getUniqueId()) && sentRequests.get(sender.getUniqueId()).equals(target.getUniqueId());
-    }
-
-    public static void sendTPARequest(Player from, Player to, boolean isTpa) {
-        if (hasPendingRequest(from, to)) {
-            from.sendMessage(ChatColor.RED + "You can only send one TPA request to this player.");
+    public static void sendTPARequest(Player sender, Player target, boolean isTpa) {
+        if (sender.equals(target)) {
+            sender.sendMessage(ChatColor.RED + "You can't send a request to yourself!");
             return;
         }
 
-        requests.put(to, from);
-        sentRequests.put(from.getUniqueId(), to.getUniqueId());
-        requestTypes.put(to, isTpa);
-
-        String typeText = isTpa ? ChatColor.GRAY + "TPA" : ChatColor.GRAY + "TPAHere";
-        String message = ChatColor.GRAY + "You received a " + typeText + ChatColor.GRAY + " request from " + ChatColor.AQUA + from.getName();
-
-        to.sendMessage(message);
-        to.sendMessage(ChatColor.GRAY + "Use " + ChatColor.GREEN + "/tpaccept" + ChatColor.GRAY + " to accept.");
-        to.sendActionBar(message);
-
-        from.sendMessage(ChatColor.GRAY + "Teleport request sent to " + ChatColor.AQUA + to.getName() + ChatColor.GRAY + ".");
-        from.sendActionBar(ChatColor.GRAY + "TPA request sent to " + ChatColor.AQUA + to.getName());
-
-        BukkitRunnable timeoutTask = new BukkitRunnable() {
-            @Override
-            public void run() {
-                if (requests.containsKey(to) && requests.get(to).equals(from)) {
-                    requests.remove(to);
-                    sentRequests.remove(from.getUniqueId());
-                    requestTypes.remove(to);
-                    expiryTasks.remove(to);
-
-                    from.sendMessage(ChatColor.RED + "Your teleport request to " + ChatColor.AQUA + to.getName() + ChatColor.RED + " has expired.");
-                    to.sendMessage(ChatColor.RED + "The teleport request from " + ChatColor.AQUA + from.getName() + ChatColor.RED + " has expired.");
-                }
-            }
-        };
-        timeoutTask.runTaskLater(Bukkit.getPluginManager().getPlugin("zTPA"), 60 * 20L);
-        expiryTasks.put(to, timeoutTask);
-    }
-
-    public static void showAcceptGUI(Player target) {
-        Inventory gui = Bukkit.createInventory(null, 27, ChatColor.GREEN + "Teleport Request");
-
-        ItemStack accept = new ItemStack(Material.LIME_STAINED_GLASS_PANE);
-        ItemMeta acceptMeta = accept.getItemMeta();
-        acceptMeta.setDisplayName(ChatColor.GREEN + "Accept");
-        accept.setItemMeta(acceptMeta);
-
-        ItemStack decline = new ItemStack(Material.RED_STAINED_GLASS_PANE);
-        ItemMeta declineMeta = decline.getItemMeta();
-        declineMeta.setDisplayName(ChatColor.RED + "Decline");
-        decline.setItemMeta(declineMeta);
-
-        ItemStack air = new ItemStack(Material.AIR);
-        for (int i = 0; i < gui.getSize(); i++) {
-            gui.setItem(i, air);
+        if (hasCooldown(sender)) {
+            sender.sendMessage(ChatColor.RED + "Please wait before sending another request!");
+            return;
         }
 
-        gui.setItem(11, decline);
-        gui.setItem(15, accept);
+        requests.put(target.getUniqueId(), sender.getUniqueId());
+        requestTypes.put(target.getUniqueId(), isTpa);
+
+        showAcceptGUI(target, sender); // Added sender parameter here
+
+        String requestType = isTpa ? "TPA" : "TPAHERE";
+        sender.sendMessage(ChatColor.GREEN + requestType + " request sent to " + target.getName() + "!");
+        target.sendMessage(ChatColor.GREEN + sender.getName() + " wants to teleport to you!");
+
+        Bukkit.getScheduler().runTaskLater(ZTpa.getInstance(), () -> {
+            if (requests.containsKey(target.getUniqueId())) {
+                cancelRequest(target);
+            }
+        }, 1200L);
+    }
+
+    public static void showAcceptGUI(Player target, Player sender) {
+        Inventory gui = Bukkit.createInventory(null, 27, "§aTeleport Request");
+
+        // Create sender's head
+        ItemStack head = new ItemStack(Material.PLAYER_HEAD);
+        SkullMeta meta = (SkullMeta) head.getItemMeta();
+        meta.setOwningPlayer(sender);
+        meta.setDisplayName(ChatColor.GOLD + sender.getName());
+        head.setItemMeta(meta);
+
+        ItemStack accept = createGuiItem(Material.LIME_STAINED_GLASS_PANE, ChatColor.GREEN + "Accept");
+        ItemStack deny = createGuiItem(Material.RED_STAINED_GLASS_PANE, ChatColor.RED + "Deny");
+
+        // Fill GUI
+        gui.setItem(13, head);
+        gui.setItem(11, accept);
+        gui.setItem(15, deny);
 
         target.openInventory(gui);
     }
 
-    public static void acceptRequest(Player target) {
-        Player requester = requests.remove(target);
-        Boolean isTpa = requestTypes.remove(target);
 
-        BukkitRunnable task = expiryTasks.remove(target);
-        if (task != null) {
-            task.cancel();
-        }
+    private static ItemStack createGuiItem(Material material, String name) {
+        ItemStack item = new ItemStack(material);
+        ItemMeta meta = item.getItemMeta();
+        meta.setDisplayName(name);
+        item.setItemMeta(meta);
+        return item;
+    }
 
-        if (requester == null || !requester.isOnline()) {
-            target.sendMessage(ChatColor.RED + "The teleport requester is no longer online.");
+    public static void handleRequestClick(Player player, String action) {
+        if (!requests.containsKey(player.getUniqueId())) {
+            player.sendMessage(ChatColor.RED + "No pending teleport request!");
             return;
         }
 
-        sentRequests.remove(requester.getUniqueId());
+        if (action.contains("Accept")) {
+            acceptRequest(player);
+        } else {
+            cancelRequest(player);
+        }
+    }
 
-        long now = System.currentTimeMillis();
-        if (cooldowns.containsKey(requester.getUniqueId())) {
-            long last = cooldowns.get(requester.getUniqueId());
-            if (now - last < TELEPORT_COOLDOWN) {
-                requester.sendMessage(ChatColor.RED + "You must wait before teleporting again.");
-                return;
-            }
+    private static void acceptRequest(Player target) {
+        UUID senderId = requests.get(target.getUniqueId());
+        Player sender = Bukkit.getPlayer(senderId);
+
+        if (sender == null || !sender.isOnline()) {
+            target.sendMessage(ChatColor.RED + "Player is not online or not found!");
+            requests.remove(target.getUniqueId());
+            return;
         }
 
-        teleporting.add(requester);
-        requester.sendMessage(ChatColor.GREEN + "Teleporting in 5 seconds...");
-        requester.playSound(requester.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1, 1);
+        boolean isTpa = requestTypes.get(target.getUniqueId());
+        startTeleport(sender, target, isTpa);
+        requests.remove(target.getUniqueId());
+        requestTypes.remove(target.getUniqueId());
+    }
+
+    private static void startTeleport(Player player, Player target, boolean isTpa) {
+        teleporting.add(player.getUniqueId());
 
         new BukkitRunnable() {
-            int countdown = 5;
+            int countdown = 3;
 
             @Override
             public void run() {
-                if (!teleporting.contains(requester)) {
-                    requester.sendMessage(ChatColor.RED + "Teleport canceled.");
+                if (!teleporting.contains(player.getUniqueId())) {
                     cancel();
                     return;
                 }
 
-                if (countdown == 0) {
-                    if (isTpa != null && !isTpa) {
-                        target.teleport(requester.getLocation());
+                if (countdown > 0) {
+                    player.sendTitle(
+                            ChatColor.GREEN + "Teleporting in...",
+                            ChatColor.YELLOW + String.valueOf(countdown),
+                            0, 20, 0
+                    );
+                    player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.0f);
+                    countdown--;
+                } else {
+                    if (isTpa) {
+                        player.teleport(target.getLocation());
                     } else {
-                        requester.teleport(target.getLocation());
+                        target.teleport(player.getLocation());
                     }
-                    requester.sendTitle(ChatColor.GREEN + "Teleported!", "", 10, 40, 10);
-                    requester.playSound(requester.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 1, 1);
-                    cooldowns.put(requester.getUniqueId(), System.currentTimeMillis());
-                    teleporting.remove(requester);
+                    player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
+                    teleporting.remove(player.getUniqueId());
+                    cooldowns.put(player.getUniqueId(), System.currentTimeMillis());
                     cancel();
-                    return;
                 }
-
-                requester.sendActionBar(ChatColor.GRAY + "Teleporting in " + ChatColor.AQUA + countdown + "s...");
-                countdown--;
             }
-        }.runTaskTimer(Bukkit.getPluginManager().getPlugin("zTPA"), 0L, 20L);
+        }.runTaskTimer(ZTpa.getInstance(), 0L, 20L);
     }
 
-    public static void denyRequest(Player target) {
-        Player requester = requests.remove(target);
-        BukkitRunnable task = expiryTasks.remove(target);
-        if (task != null) task.cancel();
+    public static void cancelRequest(Player target) {
+        UUID senderId = requests.get(target.getUniqueId());
+        if (senderId != null) {
+            Player sender = Bukkit.getPlayer(senderId);
+            if (sender != null && sender.isOnline()) {
+                sender.sendMessage(ChatColor.RED + "Your teleport request has been denied.");
+            }
 
-        if (requester != null) {
-            requester.sendMessage(ChatColor.RED + "Your teleport request was declined.");
-            sentRequests.remove(requester.getUniqueId());
-            requestTypes.remove(target);
+            target.sendMessage(ChatColor.RED + "Teleport request denied.");
+            requests.remove(target.getUniqueId());
+            requestTypes.remove(target.getUniqueId());
         }
     }
 
-    public static boolean isRequest(Player target) {
-        return requests.containsKey(target);
-    }
+    public static void handleMenuClick(Player player, ItemStack clicked, String title) {
+        if (!clicked.hasItemMeta()) return;
 
-    public static boolean isTeleporting(Player player) {
-        return teleporting.contains(player);
-    }
+        String targetName = title.replace("§4Teleport Menu: ", "");
+        Player target = Bukkit.getPlayer(targetName);
 
-    public static void cancelTeleport(Player player, String reason) {
-        if (teleporting.remove(player)) {
-            player.sendActionBar(reason);
-            player.sendMessage(ChatColor.RED + "Teleport canceled due to movement.");
+        if (target == null || !target.isOnline()) {
+            player.sendMessage(ChatColor.RED + "Player is not online or not found!");
+            return;
+        }
+
+        String displayName = clicked.getItemMeta().getDisplayName();
+        boolean isTpaHere = title.contains("TPAHere");
+
+        if (displayName.contains("Confirm")) {
+            sendTPARequest(player, target, !isTpaHere);
+        } else if (displayName.contains("Cancel")) {
+            player.sendMessage(ChatColor.RED + "Teleport request cancelled.");
         }
     }
 
     public static void openConfirmGUI(Player player, Player target, boolean isHere) {
-        Inventory gui = Bukkit.createInventory(null, 27,
-                isHere ? ChatColor.GREEN + "Send TPAHere to " + target.getName() :
-                        ChatColor.GREEN + "Send TPA to " + target.getName());
+        String title = "§4Teleport Menu: " + target.getName();
+        Inventory gui = Bukkit.createInventory(null, 27, title);
 
-        ItemStack confirm = new ItemStack(Material.LIME_STAINED_GLASS_PANE);
-        ItemMeta confirmMeta = confirm.getItemMeta();
-        confirmMeta.setDisplayName(ChatColor.GREEN + "Confirm");
-        confirmMeta.setLore(Collections.singletonList(target.getName()));
-        confirm.setItemMeta(confirmMeta);
+        ItemStack head = new ItemStack(Material.PLAYER_HEAD);
+        SkullMeta meta = (SkullMeta) head.getItemMeta();
+        meta.setOwningPlayer(target);
+        meta.setDisplayName(ChatColor.GOLD + target.getName());
+        head.setItemMeta(meta);
 
-        ItemStack cancel = new ItemStack(Material.RED_STAINED_GLASS_PANE);
-        ItemMeta cancelMeta = cancel.getItemMeta();
-        cancelMeta.setDisplayName(ChatColor.RED + "Cancel");
-        cancel.setItemMeta(cancelMeta);
+        ItemStack confirm = createGuiItem(Material.LIME_STAINED_GLASS_PANE,
+                ChatColor.GREEN + "Confirm");
+        ItemStack cancel = createGuiItem(Material.RED_STAINED_GLASS_PANE,
+                ChatColor.RED + "Cancel");
 
-        ItemStack air = new ItemStack(Material.AIR);
-        for (int i = 0; i < gui.getSize(); i++) {
-            gui.setItem(i, air);
-        }
-
+        gui.setItem(13, head);
         gui.setItem(11, cancel);
         gui.setItem(15, confirm);
 
         player.openInventory(gui);
     }
 
-    public static void handleConfirmClick(Player player, String guiTitle, String targetName) {
-        boolean isHere = guiTitle.contains("TPAHere");
-        Player target = Bukkit.getPlayer(targetName);
+    public static boolean hasCooldown(Player player) {
+        if (!cooldowns.containsKey(player.getUniqueId())) return false;
+        return System.currentTimeMillis() - cooldowns.get(player.getUniqueId()) < COOLDOWN_TIME;
+    }
 
-        if (target != null && target.isOnline()) {
-            sendTPARequest(player, target, !isHere);
-            player.sendMessage(ChatColor.GREEN + "TPA request sent to " + target.getName() + ".");
-        } else {
-            player.sendMessage(ChatColor.RED + "Player not found or offline.");
+    public static void clearAllRequests() {
+        requests.clear();
+        requestTypes.clear();
+        teleporting.clear();
+        cooldowns.clear();
+    }
+
+    public static void handlePlayerQuit(Player player) {
+        requests.remove(player.getUniqueId());
+        teleporting.remove(player.getUniqueId());
+        cooldowns.remove(player.getUniqueId());
+    }
+
+    public static boolean isTeleporting(Player player) {
+        return teleporting.contains(player.getUniqueId());
+    }
+
+    public static void cancelTeleport(Player player, String reason) {
+        if (teleporting.remove(player.getUniqueId())) {
+            player.sendMessage(reason);
         }
     }
-    public boolean isLicenseValid(String key) {
-        try {
-            URL url = new URL("http://localhost:3000/verify");
-            HttpURLConnection con = (HttpURLConnection) url.openConnection();
-            con.setRequestMethod("POST");
-            con.setRequestProperty("Content-Type", "application/json");
-            con.setDoOutput(true);
 
-            String jsonInput = "{\"key\":\"" + key + "\"}";
-            try (OutputStream os = con.getOutputStream()) {
-                byte[] input = jsonInput.getBytes("utf-8");
-                os.write(input, 0, input.length);
-            }
-
-            BufferedReader br = new BufferedReader(new InputStreamReader(con.getInputStream(), "utf-8"));
-            StringBuilder response = new StringBuilder();
-            String responseLine;
-
-            while ((responseLine = br.readLine()) != null) {
-                response.append(responseLine.trim());
-            }
-
-            return response.toString().contains("\"valid\":true");
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            return false;
-        }
+    public static boolean hasPendingRequest(Player sender, Player target) {
+        return requests.containsKey(target.getUniqueId()) &&
+                requests.get(target.getUniqueId()).equals(sender.getUniqueId());
+    }
+    public static UUID getRequestSender(UUID targetId) {
+        return requests.get(targetId);
     }
 }

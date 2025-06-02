@@ -1,0 +1,11 @@
+name: zTpa
+version: '1.0-SNAPSHOT'
+main: devz00t.zTpa.ZTpa
+api-version: '1.21'
+commands:
+  Tpa:
+
+  Tpahere:
+
+  Tpaccept:
+

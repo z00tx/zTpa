@@ -2,6 +2,7 @@ package devz00t.zTpa.Commands;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.Material;
 import org.bukkit.command.*;
 import org.bukkit.entity.Player;
 
@@ -16,6 +17,7 @@ public class TPAHereCommand implements CommandExecutor {
             player.sendMessage(ChatColor.RED + "Usage: /tpahere <player>");
             return true;
         }
+        
 
         Player target = Bukkit.getPlayer(args[0]);
         if (target == null || !target.isOnline()) {
