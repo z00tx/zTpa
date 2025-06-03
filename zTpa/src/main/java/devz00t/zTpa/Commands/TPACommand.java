@@ -27,8 +27,9 @@ public class TPACommand implements CommandExecutor {
             return true;
         }
 
-        TPAHandler.openConfirmGUI(player, target, false);
+        TPAHandler.sendTPARequest(player, target, true);
         return true;
     }
 }
+
 

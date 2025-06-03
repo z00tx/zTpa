@@ -36,11 +36,15 @@ public class TPAHandler {
         requests.put(target.getUniqueId(), sender.getUniqueId());
         requestTypes.put(target.getUniqueId(), isTpa);
 
-        showAcceptGUI(target, sender);
-
         String requestType = isTpa ? "TPA" : "TPAHERE";
         sender.sendMessage(ChatColor.GREEN + requestType + " request sent to " + target.getName() + "!");
-        target.sendMessage(ChatColor.GREEN + sender.getName() + " wants to teleport to you!");
+
+        if (isTpa) {
+            target.sendMessage(ChatColor.GREEN + sender.getName() + " wants to teleport to you!");
+        } else {
+            target.sendMessage(ChatColor.GREEN + sender.getName() + " sent you a TPAHERE request!");
+        }
+        target.sendMessage(ChatColor.YELLOW + "Use /tpaccept to accept the request.");
 
         Bukkit.getScheduler().runTaskLater(ZTpa.getInstance(), () -> {
             if (requests.containsKey(target.getUniqueId())) {
@@ -62,12 +66,11 @@ public class TPAHandler {
         ItemStack deny = createGuiItem(Material.RED_STAINED_GLASS_PANE, ChatColor.RED + "Deny");
 
         gui.setItem(13, head);
-        gui.setItem(11, accept);
-        gui.setItem(15, deny);
+        gui.setItem(15, accept);
+        gui.setItem(11, deny);
 
         target.openInventory(gui);
     }
-
 
     private static ItemStack createGuiItem(Material material, String name) {
         ItemStack item = new ItemStack(material);
@@ -156,54 +159,6 @@ public class TPAHandler {
         }
     }
 
-    public static void handleMenuClick(Player player, ItemStack clicked, String title) {
-        if (!clicked.hasItemMeta()) return;
-
-        String targetName = title.replace("§4Teleport Menu: ", "");
-        Player target = Bukkit.getPlayer(targetName);
-
-        if (target == null || !target.isOnline()) {
-            player.sendMessage(ChatColor.RED + "Player is not online or not found!");
-            return;
-        }
-
-        String displayName = clicked.getItemMeta().getDisplayName();
-        boolean isTpaHere = title.contains("TPAHere");
-
-        if (displayName.contains("Confirm")) {
-            sendTPARequest(player, target, !isTpaHere);
-        } else if (displayName.contains("Cancel")) {
-            player.sendMessage(ChatColor.RED + "Teleport request cancelled.");
-        }
-    }
-
-    public static void openConfirmGUI(Player player, Player target, boolean isHere) {
-        String title = "§4Teleport Menu: " + target.getName();
-        Inventory gui = Bukkit.createInventory(null, 27, title);
-
-        ItemStack head = new ItemStack(Material.PLAYER_HEAD);
-        SkullMeta meta = (SkullMeta) head.getItemMeta();
-        meta.setOwningPlayer(target);
-        meta.setDisplayName(ChatColor.GOLD + target.getName());
-        head.setItemMeta(meta);
-
-        ItemStack confirm = createGuiItem(Material.LIME_STAINED_GLASS_PANE,
-                ChatColor.GREEN + "Confirm");
-        ItemStack cancel = createGuiItem(Material.RED_STAINED_GLASS_PANE,
-                ChatColor.RED + "Cancel");
-
-        gui.setItem(13, head);
-        gui.setItem(11, cancel);
-        gui.setItem(15, confirm);
-
-        player.openInventory(gui);
-    }
-
-    public static boolean hasCooldown(Player player) {
-        if (!cooldowns.containsKey(player.getUniqueId())) return false;
-        return System.currentTimeMillis() - cooldowns.get(player.getUniqueId()) < COOLDOWN_TIME;
-    }
-
     public static void clearAllRequests() {
         requests.clear();
         requestTypes.clear();
@@ -231,7 +186,14 @@ public class TPAHandler {
         return requests.containsKey(target.getUniqueId()) &&
                 requests.get(target.getUniqueId()).equals(sender.getUniqueId());
     }
+
+    public static boolean hasCooldown(Player player) {
+        if (!cooldowns.containsKey(player.getUniqueId())) return false;
+        return System.currentTimeMillis() - cooldowns.get(player.getUniqueId()) < COOLDOWN_TIME;
+    }
+
     public static UUID getRequestSender(UUID targetId) {
         return requests.get(targetId);
     }
 }
+

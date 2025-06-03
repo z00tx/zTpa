@@ -27,16 +27,12 @@ public class TPAListener implements Listener {
 
         String displayName = clicked.getItemMeta().getDisplayName();
 
-
-        if (title.startsWith("§4Teleport Menu:")) {
-            TPAHandler.handleMenuClick(player, clicked, title);
-        } else if (title.equals("§aTeleport Request")) {
+        if (title.equals("§aTeleport Request")) {
             TPAHandler.handleRequestClick(player, displayName);
         }
 
         player.closeInventory();
     }
-
 
     @EventHandler
     public void onMove(PlayerMoveEvent e) {

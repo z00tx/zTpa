@@ -7,7 +7,6 @@ import org.bukkit.entity.Player;
 
 import java.util.UUID;
 
-
 public class TPAAcceptCommand implements CommandExecutor {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
@@ -29,4 +28,5 @@ public class TPAAcceptCommand implements CommandExecutor {
         return true;
     }
 }
+
 
